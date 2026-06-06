@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.tmp-tundra-api-readonly/
+brandbook-extract/
+
+*.log
+vite-start.*.log
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db

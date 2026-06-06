@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+:root {
+  --yamal-cranberry: #bf1238;
+  --yamal-cranberry-dark: #9e1130;
+  --yamal-mammoth: #f5f3e6;
+  --yamal-snow-lichen: #ebe4e7;
+  --yamal-forest-lichen: #e5ebe4;
+  --yamal-deer-lichen: #cfe0dc;
+  --yamal-line: #d7ddda;
+  --yamal-ink: #000000;
+}
+
+body {
+  margin: 0;
+  background: var(--yamal-deer-lichen);
+  color: var(--yamal-ink);
+  font-family: "Golos Text", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 12% 8%, rgb(191 18 56 / 0.08), transparent 28rem),
+    linear-gradient(135deg, var(--yamal-mammoth) 0%, var(--yamal-forest-lichen) 48%, var(--yamal-deer-lichen) 100%);
+}
+
+.brand-sidebar {
+  border-color: rgb(255 255 255 / 0.08);
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 0.9), rgb(0 0 0 / 0.96)),
+    linear-gradient(135deg, var(--yamal-cranberry), #000000);
+}
+
+.brand-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, transparent 0 56%, rgb(201 23 58 / 0.18) 56% 68%, transparent 68%),
+    linear-gradient(45deg, transparent 0 72%, rgb(245 243 230 / 0.12) 72% 80%, transparent 80%);
+}
+
+.brand-sidebar > * {
+  position: relative;
+}
+
+.brand-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--yamal-cranberry), var(--yamal-cranberry-dark));
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.24);
+}
+
+.brand-mark span {
+  color: var(--yamal-mammoth);
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  transform: skew(-7deg);
+}
+
+.brand-header {
+  border-color: var(--yamal-line);
+  background: rgb(245 243 230 / 0.92);
+}
+
+.brand-card {
+  border: 1px solid rgb(207 224 220 / 0.86);
+  background: rgb(245 243 230 / 0.94);
+  box-shadow: 0 16px 44px rgb(16 24 32 / 0.07);
+}
+
+.brand-sync-card {
+  background:
+    linear-gradient(135deg, rgb(0 0 0 / 0.86), rgb(0 0 0 / 0.92)),
+    linear-gradient(145deg, var(--yamal-cranberry), #000000);
+  box-shadow: 0 18px 48px rgb(16 24 32 / 0.18);
+}
+
+.brand-primary-button {
+  background: linear-gradient(135deg, var(--yamal-cranberry), var(--yamal-cranberry-dark));
+  box-shadow: 0 12px 28px rgb(201 23 58 / 0.22);
+}
+
+.brand-primary-button:hover {
+  background: linear-gradient(135deg, #d92045, #8f102c);
+}
+
+.brand-secondary-button {
+  border: 1px solid var(--yamal-deer-lichen);
+  background: var(--yamal-mammoth);
+  color: #000000;
+}
+
+.brand-secondary-button:hover {
+  background: var(--yamal-forest-lichen);
+}
+
+.brand-row-button {
+  background: #000000;
+}
+
+.brand-row-button:hover {
+  background: var(--yamal-cranberry-dark);
+}
+
+.modal-backdrop {
+  background:
+    radial-gradient(circle at 50% 20%, rgb(191 18 56 / 0.18), transparent 28rem),
+    rgb(0 0 0 / 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.badge-cranberry {
+  background: color-mix(in srgb, var(--yamal-cranberry) 14%, white);
+  color: var(--yamal-cranberry-dark);
+}
+
+.badge-deer {
+  background: var(--yamal-deer-lichen);
+  color: #1d3b39;
+}
+
+.badge-forest {
+  background: var(--yamal-forest-lichen);
+  color: #24342f;
+}
+
+.badge-snow {
+  background: var(--yamal-snow-lichen);
+  color: #5a3742;
+}
+
+.badge-mammoth {
+  background: var(--yamal-mammoth);
+  color: #5d4a27;
+}
