@@ -1,6 +1,18 @@
-const defaultApiBaseUrl = 'http://localhost:8000/api/v1';
+declare global {
+  interface Window {
+    __TUNDRA_ADMIN_CONFIG__?: {
+      API_BASE_URL?: string;
+    };
+  }
+}
 
-export const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? defaultApiBaseUrl).replace(/\/$/, '');
+const defaultApiBaseUrl = '/api/v1';
+
+export const apiBaseUrl = (
+  window.__TUNDRA_ADMIN_CONFIG__?.API_BASE_URL ??
+  import.meta.env.VITE_API_BASE_URL ??
+  defaultApiBaseUrl
+).replace(/\/$/, '');
 
 type RequestOptions = {
   method?: 'GET' | 'POST';
