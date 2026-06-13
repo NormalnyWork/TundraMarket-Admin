@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -11,46 +11,37 @@ import {
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   Clock3,
   LogOut,
   MapPin,
   Package,
+  RotateCcw,
   Search,
   ShoppingBasket,
-  TrendingUp,
   Truck,
-  X,
 } from 'lucide-react';
 import { StatCard } from './components/StatCard';
 import { statusLabels } from './constants/orderLabels';
-import { dailyStats } from './data/orders';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { StatusBadge } from './features/orders/OrderBadges';
 import {
   clearCurrentUser,
   loadCurrentUser,
-  loginWithDemoUser,
+  loginAdmin,
   saveCurrentUser,
 } from './services/authService';
 import {
   getOrderAnalytics,
+  getOrderDay,
   getOrderStats,
-  getOrderTotal,
-  loadOrders,
+  loadOrdersFromApi,
 } from './services/ordersService';
-import type { AuthUser, LoginCredentials } from './types/auth';
 import type { Order, OrderStatus } from './types/orders';
 
 type QuickFilter = 'ALL' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'DENIED';
-type AnalyticsPeriod = 'WEEK' | 'MONTH' | 'ALL';
-
-const analyticsPeriodLabels: Record<AnalyticsPeriod, string> = {
-  WEEK: 'Неделя',
-  MONTH: 'Месяц',
-  ALL: 'Все',
-};
 
 const quickFilterLabels: Record<QuickFilter, string> = {
   ALL: 'Все',
@@ -61,39 +52,64 @@ const quickFilterLabels: Record<QuickFilter, string> = {
 };
 
 function getOrderDate(order: Order) {
-  const datePart = order.createdAt.split(' ')[0] || order.createdAt;
-  const normalizedDate = datePart.includes('.') ? datePart.split('.').reverse().join('-') : datePart;
-
-  return new Date(normalizedDate);
-}
-
-function getAnalyticsPeriodStart(period: AnalyticsPeriod) {
-  if (period === 'ALL') {
-    return null;
-  }
-
-  const startDate = new Date('2026-06-06T00:00:00');
-  startDate.setHours(0, 0, 0, 0);
-  startDate.setDate(startDate.getDate() - (period === 'WEEK' ? 6 : 29));
-
-  return startDate;
+  return new Date(`${getOrderDay(order)}T00:00:00`);
 }
 
 function formatCoordinates(order: Order) {
   return `${order.location.latitude.toFixed(3)}, ${order.location.longitude.toFixed(3)}`;
 }
 
+function isOrderInDateRange(order: Order, dateFrom: string, dateTo: string) {
+  const orderDate = getOrderDate(order);
+
+  if (dateFrom && orderDate < new Date(`${dateFrom}T00:00:00`)) {
+    return false;
+  }
+
+  if (dateTo && orderDate > new Date(`${dateTo}T23:59:59`)) {
+    return false;
+  }
+
+  return true;
+}
+
 function App() {
-  const [orders] = useState<Order[]>(loadOrders);
+  const [currentUser, setCurrentUser] = useState(loadCurrentUser);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('ALL');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [notice, setNotice] = useState('');
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(loadCurrentUser);
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>('WEEK');
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    let isMounted = true;
+
+    loadOrdersFromApi(currentUser.token).then((result) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setOrders(result.orders);
+      setNotice(result.message);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
+
+  const intervalOrders = useMemo(() => {
+    return orders.filter((order) => isOrderInDateRange(order, dateFrom, dateTo));
+  }, [dateFrom, dateTo, orders]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
+    return intervalOrders.filter((order) => {
       const query = search.toLowerCase().trim();
       const matchesStatus = statusFilter === 'ALL' || order.status === statusFilter;
       const matchesQuickFilter =
@@ -111,45 +127,42 @@ function App() {
 
       return matchesStatus && matchesQuickFilter && matchesSearch;
     });
-  }, [orders, quickFilter, search, statusFilter]);
+  }, [intervalOrders, quickFilter, search, statusFilter]);
 
-  const analyticsOrders = useMemo(() => {
-    const periodStart = getAnalyticsPeriodStart(analyticsPeriod);
-
-    if (!periodStart) {
-      return orders;
-    }
-
-    return orders.filter((order) => getOrderDate(order) >= periodStart);
-  }, [analyticsPeriod, orders]);
-
-  const stats = useMemo(() => getOrderStats(analyticsOrders), [analyticsOrders]);
-  const analytics = useMemo(() => getOrderAnalytics(analyticsOrders), [analyticsOrders]);
+  const stats = useMemo(() => getOrderStats(intervalOrders), [intervalOrders]);
+  const analytics = useMemo(() => getOrderAnalytics(intervalOrders), [intervalOrders]);
   const activeOrdersCount = stats.created + stats.processing + stats.sent;
-  const hasFilters = statusFilter !== 'ALL' || quickFilter !== 'ALL' || search.trim() !== '';
+  const hasFilters = statusFilter !== 'ALL' || quickFilter !== 'ALL' || search.trim() !== '' || dateFrom !== '' || dateTo !== '';
 
   function resetFilters() {
     setStatusFilter('ALL');
     setQuickFilter('ALL');
     setSearch('');
+    setDateFrom('');
+    setDateTo('');
   }
 
-  function signIn(credentials: LoginCredentials) {
-    const user = loginWithDemoUser(credentials);
+  function resetDateFilter() {
+    setDateFrom('');
+    setDateTo('');
+  }
 
-    if (!user) {
+  async function signIn(credentials: Parameters<typeof loginAdmin>[0]) {
+    try {
+      const user = await loginAdmin(credentials);
+      saveCurrentUser(user);
+      setCurrentUser(user);
+      setNotice('');
+      return true;
+    } catch {
       return false;
     }
-
-    saveCurrentUser(user);
-    setCurrentUser(user);
-    setNotice(`Выполнен вход: ${user.name}`);
-    return true;
   }
 
   function signOut() {
     clearCurrentUser();
     setCurrentUser(null);
+    setOrders([]);
     setNotice('');
   }
 
@@ -162,17 +175,17 @@ function App() {
       <aside className="brand-sidebar fixed left-0 top-0 hidden h-full w-72 flex-col overflow-y-auto border-r p-6 text-white lg:flex">
         <div className="mb-10 flex shrink-0 items-center gap-3">
           <div className="brand-mark" aria-hidden="true">
-            <span>СД</span>
+            <span>ТМ</span>
           </div>
           <div>
             <p className="text-sm text-slate-300">Система аналитики</p>
-            <h1 className="text-lg font-black leading-tight">Ямал. Северная доставка</h1>
+            <h1 className="text-lg font-black leading-tight">Тундра-Маркет</h1>
           </div>
         </div>
 
         <div className="mb-6 rounded-lg bg-white/10 p-4 ring-1 ring-white/10">
-          <p className="text-xs text-slate-300">Выполнен вход</p>
-          <p className="mt-1 text-sm font-semibold text-[#F5F3E6]">{currentUser.name}</p>
+          <p className="text-xs text-slate-300">Режим панели</p>
+          <p className="mt-1 text-sm font-semibold text-[#F5F3E6]">Мониторинг заказов</p>
         </div>
 
         <div className="space-y-3 text-sm">
@@ -193,7 +206,7 @@ function App() {
         <div className="mt-auto rounded-lg bg-white/10 p-4 ring-1 ring-white/10">
           <div className="mb-2 flex items-center gap-2 text-[#F5F3E6]">
             <MapPin size={18} />
-            <span className="text-sm font-semibold">Мониторинг заказов и факторий</span>
+            <span className="text-sm font-semibold">Мониторинг заказов</span>
           </div>
         </div>
       </aside>
@@ -203,32 +216,74 @@ function App() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm text-slate-500">Админ-панель</p>
-              <h2 className="text-2xl font-bold text-slate-950">Статистика и мониторинг заказов</h2>
+              <h2 className="text-2xl font-bold text-slate-950">Тундра-Маркет</h2>
               <p className="mt-1 text-xs font-semibold text-[#BF1238]">
-                Объем заказов, частота, популярные товары, статусы и фактории
+                Мониторинг заказов, статусов, товаров и факторий
               </p>
             </div>
-            <button
-              type="button"
-              onClick={signOut}
-              className="brand-secondary-button flex w-fit items-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold"
-            >
-              <LogOut size={18} />
-              Выйти
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={signOut}
+                className="brand-secondary-button flex h-11 items-center gap-2 rounded-lg px-4 text-sm font-semibold"
+              >
+                <LogOut size={16} />
+                Выйти
+              </button>
+            </div>
           </div>
         </header>
 
         {notice && (
-          <div className="mx-5 mt-5 flex items-start justify-between gap-4 rounded-lg border border-[#CFE0DC] bg-[#E5EBE4] px-5 py-4 text-sm font-semibold text-[#1d3b39] lg:mx-8">
-            <span>{notice}</span>
-            <button type="button" onClick={() => setNotice('')} aria-label="Скрыть уведомление">
-              <X size={16} />
-            </button>
+          <div className="mx-5 mt-5 rounded-lg border border-[#CFE0DC] bg-[#E5EBE4] px-5 py-4 text-sm font-semibold text-[#1d3b39] lg:mx-8">
+            {notice}
           </div>
         )}
 
         <section id="dashboard" className="space-y-6 p-5 lg:p-8">
+          <div className="brand-card rounded-lg p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#BF1238]">Интервал заказов</p>
+                <h3 className="text-lg font-bold">Список заказов за выбранный период</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Найдено заказов: <span className="font-bold text-slate-950">{intervalOrders.length}</span>
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Дата с
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(event) => setDateFrom(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-lg border border-[#CFE0DC] bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-950 sm:w-44"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Дата по
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(event) => setDateTo(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-lg border border-[#CFE0DC] bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-950 sm:w-44"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetDateFilter}
+                  disabled={!dateFrom && !dateTo}
+                  className="brand-secondary-button flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <RotateCcw size={16} />
+                  Сбросить период
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <StatCard title="Всего заказов" value={stats.total} icon={<Package />} />
             <StatCard title="Ждут факторию" value={stats.created} icon={<Clock3 />} />
@@ -241,15 +296,15 @@ function App() {
           <div className="grid gap-6 2xl:grid-cols-[1.4fr_0.8fr]">
             <div className="brand-card rounded-lg p-5 shadow-sm">
               <div className="mb-5">
-                <h3 className="text-lg font-bold">Динамика заказов за неделю</h3>
-                <p className="text-sm text-slate-500">Частота поступления заказов по дням</p>
+                <h3 className="text-lg font-bold">Динамика заказов по дням</h3>
+                <p className="text-sm text-slate-500">Количество заказов в выбранном интервале</p>
               </div>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                  <BarChart data={dailyStats}>
+                  <BarChart data={analytics.dailyTrend}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="day" />
-                    <YAxis />
+                    <YAxis allowDecimals={false} />
                     <Tooltip formatter={(value) => [`${value}`, 'Заказы']} labelFormatter={(label) => `${label}`} />
                     <Bar dataKey="orders" fill="#BF1238" radius={[6, 6, 0, 0]} />
                   </BarChart>
@@ -260,7 +315,7 @@ function App() {
             <div className="brand-card rounded-lg p-5 shadow-sm">
               <h3 className="mb-2 text-lg font-bold">Распределение по статусам</h3>
               <p className="mb-5 text-sm leading-6 text-slate-500">
-                Статусы соответствуют enum из спецификации API: Created, Processing, Sent, Completed, Cancelled, Denied.
+                Статусы соответствуют модели заказов: Created, Processing, Sent, Completed, Cancelled, Denied.
               </p>
               <div className="space-y-3">
                 {analytics.statusStats.map((statusStat) => {
@@ -283,40 +338,18 @@ function App() {
           </div>
 
           <div className="brand-card rounded-lg p-5 shadow-sm">
-            <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-[#BF1238]">Аналитика заказов</p>
-                <h3 className="text-lg font-bold">Объем, частота и популярные товары</h3>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <CalendarDays size={16} />
-                  <span>Период</span>
-                </div>
-                <div className="flex rounded-lg border border-[#CFE0DC] bg-white/60 p-1">
-                  {(Object.keys(analyticsPeriodLabels) as AnalyticsPeriod[]).map((period) => (
-                    <button
-                      key={period}
-                      type="button"
-                      onClick={() => setAnalyticsPeriod(period)}
-                      className={`rounded-md px-3 py-2 text-xs font-semibold ${
-                        analyticsPeriod === period ? 'bg-[#BF1238] text-white' : 'text-[#1d3b39] hover:bg-[#E5EBE4]'
-                      }`}
-                    >
-                      {analyticsPeriodLabels[period]}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="mb-5">
+              <p className="text-sm font-semibold text-[#BF1238]">Аналитика заказов</p>
+              <h3 className="text-lg font-bold">Частота, товары, категории и фактории</h3>
             </div>
 
             <div className="mb-6 grid gap-4 md:grid-cols-3">
               <div className="rounded-lg border border-[#D7DDDA] bg-white/55 p-4">
                 <div className="mb-3 inline-flex rounded-lg bg-[#CFE0DC] p-2 text-[#1d3b39]">
-                  <TrendingUp size={20} />
+                  <BarChart3 size={20} />
                 </div>
-                <p className="text-sm text-slate-500">Выручка по товарам</p>
-                <p className="mt-1 text-2xl font-bold">{analytics.totalRevenue.toLocaleString('ru-RU')}&nbsp;₽</p>
+                <p className="text-sm text-slate-500">Заказов за период</p>
+                <p className="mt-1 text-2xl font-bold">{stats.total}</p>
               </div>
               <div className="rounded-lg border border-[#D7DDDA] bg-white/55 p-4">
                 <div className="mb-3 inline-flex rounded-lg bg-[#CFE0DC] p-2 text-[#1d3b39]">
@@ -328,26 +361,38 @@ function App() {
               </div>
               <div className="rounded-lg border border-[#D7DDDA] bg-white/55 p-4">
                 <div className="mb-3 inline-flex rounded-lg bg-[#CFE0DC] p-2 text-[#1d3b39]">
-                  <ShoppingBasket size={20} />
+                  <CalendarDays size={20} />
                 </div>
-                <p className="text-sm text-slate-500">Средний чек</p>
-                <p className="mt-1 text-2xl font-bold">{analytics.averageOrderTotal.toLocaleString('ru-RU')}&nbsp;₽</p>
+                <p className="text-sm text-slate-500">Дней с заказами</p>
+                <p className="mt-1 text-2xl font-bold">{analytics.dailyTrend.length}</p>
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="grid gap-6 xl:grid-cols-3">
               <div className="rounded-lg border border-[#D7DDDA] bg-white/45 p-4">
                 <h4 className="mb-4 font-bold">Популярные товары</h4>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={analytics.popularItems} layout="vertical" margin={{ left: 12, right: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" />
+                      <XAxis type="number" allowDecimals={false} />
                       <YAxis dataKey="name" type="category" width={130} />
                       <Tooltip formatter={(value) => [`${value}`, 'Количество']} />
                       <Bar dataKey="quantity" fill="#1d3b39" radius={[0, 6, 6, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[#D7DDDA] bg-white/45 p-4">
+                <h4 className="mb-4 font-bold">Категории товаров</h4>
+                <div className="space-y-3">
+                  {analytics.categoryStats.map((category) => (
+                    <div key={category.name} className="flex items-center justify-between rounded-lg bg-white/65 px-4 py-3 text-sm">
+                      <span className="font-semibold">{category.name}</span>
+                      <span className="text-slate-500">{category.quantity}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -366,7 +411,6 @@ function App() {
                         <div className="h-2 overflow-hidden rounded-full bg-[#D7DDDA]">
                           <div className="h-full rounded-full bg-[#BF1238]" style={{ width: `${percent}%` }} />
                         </div>
-                        <p className="mt-2 text-xs text-slate-500">{stationStat.revenue.toLocaleString('ru-RU')}&nbsp;₽</p>
                       </div>
                     );
                   })}
@@ -381,7 +425,7 @@ function App() {
             <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h3 className="text-xl font-bold">Журнал заказов</h3>
-                <p className="text-sm text-slate-500">Чум, фактория, статус, координаты и состав заказа</p>
+                <p className="text-sm text-slate-500">Заказы за выбранный интервал времени</p>
               </div>
 
               <div className="flex flex-col gap-3 md:flex-row">
@@ -433,11 +477,10 @@ function App() {
                   <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                     <th className="w-[10%] py-4 pr-3">N</th>
                     <th className="w-[18%] py-4 pr-3">Чум</th>
-                    <th className="w-[20%] py-4 pr-3">Фактория</th>
+                    <th className="w-[22%] py-4 pr-3">Фактория</th>
                     <th className="w-[16%] py-4 pr-3">Статус</th>
-                    <th className="hidden w-[17%] py-4 pr-3 2xl:table-cell">Локация</th>
-                    <th className="w-[12%] py-4 pr-3 text-right">Сумма</th>
-                    <th className="w-[17%] py-4 pr-0">Товары</th>
+                    <th className="hidden w-[18%] py-4 pr-3 2xl:table-cell">Локация</th>
+                    <th className="w-[26%] py-4 pr-0">Товары</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -449,11 +492,10 @@ function App() {
                       </td>
                       <td className="py-4 pr-3 align-top">
                         <div className="truncate font-semibold">#{order.nomad.id}</div>
-                        <div className="truncate text-xs text-slate-500">{order.nomad.phone}</div>
+                        <div className="truncate text-xs text-slate-500">{order.nomad.phone || '+7 *** *** ** **'}</div>
                       </td>
                       <td className="py-4 pr-3 align-top">
                         <div className="truncate font-semibold">{order.tradingStation.name}</div>
-                        <div className="mt-1 truncate text-xs text-slate-500">{order.tradingStation.phone ?? 'Телефон не указан'}</div>
                       </td>
                       <td className="py-4 pr-3 align-top">
                         <StatusBadge status={order.status} />
@@ -462,10 +504,9 @@ function App() {
                         <div className="truncate">{formatCoordinates(order)}</div>
                         <div className="mt-1 truncate text-xs text-slate-500">{order.comment}</div>
                       </td>
-                      <td className="whitespace-nowrap py-4 pr-3 text-right align-top font-semibold">{getOrderTotal(order).toLocaleString('ru-RU')}&nbsp;₽</td>
                       <td className="py-4 pr-0 align-top">
                         <div className="line-clamp-2 text-xs leading-5 text-slate-600">
-                          {order.items.map((item) => `${item.name} × ${item.quantity}`).join(', ')}
+                          {order.items.map((item) => `${item.name} x ${item.quantity}`).join(', ')}
                         </div>
                       </td>
                     </tr>
@@ -483,20 +524,19 @@ function App() {
                       <p className="mt-1 text-xs text-slate-500">{order.tradingStation.name}</p>
                       <p className="mt-1 text-xs text-slate-500">{formatCoordinates(order)}</p>
                     </div>
-                    <p className="whitespace-nowrap text-sm font-bold">{getOrderTotal(order).toLocaleString('ru-RU')}&nbsp;₽</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <StatusBadge status={order.status} />
                   </div>
-                  <p className="mt-3 text-xs leading-5 text-slate-600">{order.items.map((item) => `${item.name} × ${item.quantity}`).join(', ')}</p>
+                  <p className="mt-3 text-xs leading-5 text-slate-600">{order.items.map((item) => `${item.name} x ${item.quantity}`).join(', ')}</p>
                 </div>
               ))}
             </div>
 
             {filteredOrders.length === 0 && (
               <div className="rounded-lg border border-dashed border-[#CFE0DC] bg-white/45 p-8 text-center">
-                <p className="font-bold">Заказы не найдены</p>
-                <p className="mt-2 text-sm text-slate-500">Измените поиск или сбросьте фильтры.</p>
+                <p className="font-bold">Заказы за выбранный период не найдены</p>
+                <p className="mt-2 text-sm text-slate-500">Измените интервал, поиск или фильтры.</p>
                 {hasFilters && (
                   <button
                     type="button"

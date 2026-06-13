@@ -1,18 +1,33 @@
 import type { AuthUser, LoginCredentials } from '../types/auth';
+import { apiRequest } from './apiClient';
 
 const authStorageKey = 'north-orders-admin-current-user';
 
-const adminUser = {
-  id: 'admin-1',
-  login: 'admin',
-  password: 'admin123',
-  name: 'Администратор',
+type AdminAuthResponse = {
+  token?: string;
+  accessToken?: string;
+  access_token?: string;
+  user?: {
+    id?: string | number;
+    name?: string;
+    login?: string;
+  };
 };
 
 export function loadCurrentUser(): AuthUser | null {
   try {
     const savedUser = localStorage.getItem(authStorageKey);
-    return savedUser ? JSON.parse(savedUser) : null;
+    const user = savedUser ? (JSON.parse(savedUser) as Partial<AuthUser>) : null;
+
+    if (user?.token) {
+      return {
+        id: String(user.id ?? 'admin'),
+        name: user.name ?? 'Администратор',
+        token: user.token,
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -26,16 +41,23 @@ export function clearCurrentUser() {
   localStorage.removeItem(authStorageKey);
 }
 
-export function loginWithDemoUser(credentials: LoginCredentials): AuthUser | null {
-  const login = credentials.login.trim().toLowerCase();
-  const password = credentials.password.trim();
+export async function loginAdmin(credentials: LoginCredentials): Promise<AuthUser> {
+  const response = await apiRequest<AdminAuthResponse>('/admin/auth', {
+    method: 'POST',
+    body: {
+      login: credentials.login.trim(),
+      password: credentials.password,
+    },
+  });
+  const token = response.token ?? response.accessToken ?? response.access_token;
 
-  if (login !== adminUser.login || password !== adminUser.password) {
-    return null;
+  if (!token) {
+    throw new Error('Admin auth response does not include token');
   }
 
   return {
-    id: adminUser.id,
-    name: adminUser.name,
+    id: String(response.user?.id ?? 'admin'),
+    name: response.user?.name ?? response.user?.login ?? 'Администратор',
+    token,
   };
 }

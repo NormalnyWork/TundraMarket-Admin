@@ -3,20 +3,28 @@ import { LockKeyhole } from 'lucide-react';
 import type { LoginCredentials } from '../../types/auth';
 
 type LoginScreenProps = {
-  onSubmit: (credentials: LoginCredentials) => boolean;
+  onSubmit: (credentials: LoginCredentials) => Promise<boolean>;
 };
 
 export function LoginScreen({ onSubmit }: LoginScreenProps) {
-  const [login, setLogin] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const isLoggedIn = onSubmit({ login, password });
+    setError('');
+    setIsLoading(true);
 
-    if (!isLoggedIn) {
-      setError('Логин или пароль не подходят');
+    try {
+      const isLoggedIn = await onSubmit({ login, password });
+
+      if (!isLoggedIn) {
+        setError('Не удалось войти. Проверьте логин, пароль и доступность сервера.');
+      }
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -26,9 +34,9 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
         <div className="brand-sync-card flex min-h-[460px] flex-col justify-between p-8 text-white">
           <div>
             <div className="brand-mark mb-6" aria-hidden="true">
-              <span>СД</span>
+              <span>ТМ</span>
             </div>
-            <p className="text-sm text-slate-300">Ямал. Северная доставка</p>
+            <p className="text-sm text-slate-300">Тундра-Маркет</p>
             <h1 className="mt-2 text-3xl font-black leading-tight">Вход в панель заказов</h1>
           </div>
 
@@ -43,7 +51,7 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
               <LockKeyhole size={24} />
             </div>
             <h2 className="text-2xl font-bold">Авторизация</h2>
-            <p className="mt-2 text-sm text-slate-500">Демо-доступ администратора: admin / admin123</p>
+            <p className="mt-2 text-sm text-slate-500">Войдите, чтобы открыть панель мониторинга.</p>
           </div>
 
           <label className="mb-4 block">
@@ -71,8 +79,12 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
 
           {error && <p className="mt-4 rounded-lg border border-[#BF1238]/25 bg-[#BF1238]/10 px-4 py-3 text-sm font-semibold text-[#9e1130]">{error}</p>}
 
-          <button type="submit" className="brand-primary-button mt-6 w-full rounded-lg px-5 py-4 text-sm font-bold text-white">
-            Войти
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="brand-primary-button mt-6 w-full rounded-lg px-5 py-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-65"
+          >
+            {isLoading ? 'Входим...' : 'Войти'}
           </button>
         </form>
       </section>

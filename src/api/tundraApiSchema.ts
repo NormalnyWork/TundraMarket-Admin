@@ -1,13 +1,10 @@
 import type { Location, OrderStatus } from '../types/orders';
 
-export type TundraOrderCategory = 'PROCESSING' | 'NEW' | 'HISTORY';
-
-export type TundraApiError =
+export type TundraAdminApiError =
   | 'INVALID_ID'
-  | 'DISTANCE_TOO_FAR'
-  | 'EMPTY_CART'
   | 'UNKNOWN_STATUS'
-  | 'UNKNOWN_CATEGORY';
+  | 'UNKNOWN_CATEGORY'
+  | 'ILLEGAL_STATUS_CHANGE';
 
 export type TundraStatusHistory = {
   status: OrderStatus;
@@ -30,7 +27,6 @@ export type TundraProduct = {
   id: number;
   name: string;
   details: string | null;
-  price: number;
   weight: number;
   volume: number;
 };
@@ -52,75 +48,38 @@ export type TundraEndpoint = {
   purpose: string;
   request: string[];
   response: string[];
-  errors?: TundraApiError[];
+  errors?: TundraAdminApiError[];
 };
 
 export const tundraApiEndpoints: TundraEndpoint[] = [
   {
     method: 'POST',
-    path: '/user/auth',
-    purpose: 'Авторизация клиента по телефону и торговой точке',
-    request: ['phone: String', 'tradingStationId: Int | Null'],
+    path: '/admin/auth',
+    purpose: 'Авторизация администратора и получение токена для аналитической панели',
+    request: ['login: String', 'password: String'],
     response: ['token: String'],
   },
   {
     method: 'GET',
-    path: '/trading-stations/list',
-    purpose: 'Список доступных факторий/торговых точек',
-    request: [],
-    response: ['result: TradingStation[]'],
-  },
-  {
-    method: 'GET',
-    path: '/user/catalog',
-    purpose: 'Каталог товаров для заказа',
-    request: [],
-    response: ['result: Product[]'],
-  },
-  {
-    method: 'GET',
-    path: '/user/current-order',
-    purpose: 'Текущий заказ пользователя',
+    path: '/admin/orders',
+    purpose: 'Список заказов для мониторинга и аналитики',
     request: ['token: String'],
-    response: ['order: Order | null'],
+    response: ['orders: Order[] | result: Order[] | Order[]'],
+    errors: ['INVALID_ID'],
   },
   {
     method: 'GET',
-    path: '/order/check-status',
-    purpose: 'Проверка изменений статуса после слабой связи',
-    request: ['token: String', 'time: Int unix seconds', 'orderId: Int'],
-    response: ['status: StatusHistory[]'],
-  },
-  {
-    method: 'POST',
-    path: '/order/create',
-    purpose: 'Создание заказа',
-    request: ['token: String', 'tradingStationId: Int', 'location: Location', 'products: ProductCount[]', 'comment: String'],
-    response: ['orderId: Int'],
-    errors: ['INVALID_ID', 'DISTANCE_TOO_FAR', 'EMPTY_CART'],
-  },
-  {
-    method: 'POST',
-    path: '/order/change-status',
-    purpose: 'Смена статуса заказа оператором/доставкой',
-    request: ['token: String', 'orderId: Int', 'newStatus: Status', 'comment: String | Null'],
-    response: ['time: Int unix seconds'],
-    errors: ['INVALID_ID', 'UNKNOWN_STATUS'],
+    path: '/admin/trading-stations',
+    purpose: 'Список факторий для аналитики по торговым точкам',
+    request: ['token: String'],
+    response: ['result: TradingStation[] | TradingStation[]'],
   },
   {
     method: 'GET',
-    path: '/order/list',
-    purpose: 'Список заказов для панели оператора',
-    request: ['token: String', 'anchor: Int | Null', 'pageSize: Int', 'orderCategory: OrderCategory'],
-    response: ['orders: Order[]'],
-    errors: ['INVALID_ID', 'UNKNOWN_CATEGORY'],
-  },
-  {
-    method: 'GET',
-    path: '/order/updates',
-    purpose: 'Получение обновлений после последней синхронизации',
-    request: ['token: String', 'time: Int unix seconds'],
-    response: ['orders: Order[]'],
+    path: '/admin/catalog',
+    purpose: 'Каталог товаров для расчета популярности товаров и категорий',
+    request: ['token: String'],
+    response: ['result: Product[] | Product[]'],
   },
 ];
 
@@ -131,5 +90,4 @@ export const tundraApiEntities = [
   'Order',
   'StatusHistory',
   'ProductCount',
-  'OrderCategory',
 ];
